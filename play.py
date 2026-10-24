@@ -12,7 +12,12 @@ from pyrogram.types import (
     InputMediaPhoto,
 )
 from pytgcalls.types.input_stream import AudioPiped
-from pytgcalls.exceptions import NoActiveGroupCall
+from pytgcalls.exceptions import (
+    NoActiveGroupCall,
+    GroupCallNotFound,
+    AlreadyJoined,
+    TelegramServerError,
+)
 
 import config
 import db
@@ -46,7 +51,6 @@ _SEND_MEDIA_MAP_NAME = {"photo": "send_photo", "video": "send_video", "animation
 
 
 def _btn(text: str, *, style: str = None, **kwargs) -> InlineKeyboardButton:
-    """Styled Inline Buttons (success, primary, danger)."""
     if style:
         try:
             return InlineKeyboardButton(text, style=style, **kwargs)
@@ -275,9 +279,6 @@ async def back_to_start_cb(client, cq: CallbackQuery):
     await _edit_body(cq.message, text, _start_keyboard(me.username))
 
 
-# ---------------------------------------------------------------------------
-# Manual Assistant Join Command
-# ---------------------------------------------------------------------------
 @bot.on_message(filters.command(["userbotjoin", "assistantjoin"]) & filters.group)
 async def manual_userbot_join(client, message: Message):
     chat_id = message.chat.id
@@ -303,12 +304,10 @@ async def play_command(client, message: Message):
             f"❌ {smallcaps_title('gaane ka naam bhi likho')}!\nExample: `/play Aaj Ki Raat`"
         )
 
-    # Turant reply do
     status = await message.reply_text(random_processing_text())
     chat_id = message.chat.id
 
     try:
-        # Check assistant connection first
         await ensure_assistant_started()
 
         if len(message.command) >= 2:
@@ -321,7 +320,7 @@ async def play_command(client, message: Message):
         requester = message.from_user.mention if message.from_user else "Someone"
         requester_id = message.from_user.id if message.from_user else None
 
-        # Step 1: Ensure Assistant In Group
+        # Ensure Assistant In Group
         joined, reason = await ensure_assistant_in_chat(chat_id)
         if not joined:
             return await status.edit_text(
@@ -333,14 +332,14 @@ async def play_command(client, message: Message):
 
         await status.edit_text(f"🔍 {smallcaps_title('searching on youtube')}...")
 
-        # Step 2: Search Track
+        # Search Track
         track = await search_track(query)
         if not track:
             return await status.edit_text(f"❌ {smallcaps_title('gaana nahi mila, koi aur naam likho')}.")
 
         await status.edit_text(f"⏳ {smallcaps_title('gaana load ho raha hai, thoda ruko')}...")
 
-        # Step 3: Stream Link / Audio Load
+        # Stream Link / Audio Download
         try:
             stream_url = await get_stream_url(track["id"])
         except Exception as e:
@@ -351,7 +350,7 @@ async def play_command(client, message: Message):
         track["requested_by"] = requester
         track["requested_by_id"] = requester_id
 
-        # Step 4: Queue Check
+        # Queue Check
         if q.is_playing(chat_id):
             position = q.push(chat_id, track)
             await status.delete()
@@ -380,11 +379,16 @@ async def _start_playing(chat_id: int, track: dict, message: Message):
 
         try:
             await call_py.join_group_call(chat_id, AudioPiped(track["stream_url"]))
-        except NoActiveGroupCall:
+        except (NoActiveGroupCall, GroupCallNotFound):
             return await message.reply_text(
                 f"❌ **{smallcaps_title('voice chat active nahi hai')}!**\n\n"
-                f"{smallcaps_title('group mein voice chat (video chat) start karo, phir')} `/play` {smallcaps_title('bhejo')}."
+                f"{smallcaps_title('pehle group mein voice chat (video chat) start karo, phir')} `/play` {smallcaps_title('bhejo')}."
             )
+        except AlreadyJoined:
+            try:
+                await call_py.change_stream(chat_id, AudioPiped(track["stream_url"]))
+            except Exception as e_change:
+                return await message.reply_text(f"❌ **Stream Change Fail:** `{e_change}`")
         except Exception as e:
             try:
                 await call_py.change_stream(chat_id, AudioPiped(track["stream_url"]))
@@ -393,7 +397,7 @@ async def _start_playing(chat_id: int, track: dict, message: Message):
                 return await message.reply_text(
                     f"❌ **{smallcaps_title('voice chat join failed')}!**\n\n"
                     f"`{e2}`\n"
-                    f"👉 {smallcaps_title('voice chat start hai ya nahi check karo aur assistant ko speak permission do')}."
+                    f"👉 {smallcaps_title('group voice chat start hai ya nahi check karo aur assistant ko speak permission do')}."
                 )
 
         q.set_now_playing(chat_id, track)

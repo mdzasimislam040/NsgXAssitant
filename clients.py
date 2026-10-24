@@ -1,4 +1,6 @@
+import base64
 import logging
+import struct
 import time
 from pyrogram import Client
 from pytgcalls import PyTgCalls
@@ -12,10 +14,46 @@ logging.basicConfig(
 )
 logging.getLogger("pyrogram").setLevel(logging.WARNING)
 logging.getLogger("pytgcalls").setLevel(logging.WARNING)
+LOGGER = logging.getLogger("MusicBot")
+
 
 # ---------------------------------------------------------------------------
-# Compatibility shim: PyTgCalls 0.9.7 + Kurigram / Pyrogram
-# Supergroup ID (-100...) thikvabe resolve korar jonno shim.
+# Auto-Converter: Pyrogram v1 (267 bytes) -> Kurigram / Pyrogram v2 (271 bytes)
+# ---------------------------------------------------------------------------
+def _fix_session_string(session_str: str, api_id: int) -> str:
+    if not session_str:
+        return ""
+    session_str = session_str.strip()
+    try:
+        pad = len(session_str) % 4
+        padded = session_str + ("=" * (4 - pad) if pad else "")
+        raw = base64.urlsafe_b64decode(padded)
+
+        # Jodi already 271 bytes hoy (v2 format)
+        if len(raw) == 271:
+            return session_str
+
+        # 267 bytes: Pyrogram v1 64-bit format (>B?256sQ?)
+        if len(raw) == 267:
+            dc_id, test_mode, auth_key, user_id, is_bot = struct.unpack(">B?256sQ?", raw)
+            converted = struct.pack(">BI?256sQ?", dc_id, int(api_id), test_mode, auth_key, user_id, is_bot)
+            LOGGER.info("✅ Converted Pyrogram v1 session string (267B) to Kurigram format (271B)")
+            return base64.urlsafe_b64encode(converted).decode().rstrip("=")
+
+        # 263 bytes: Pyrogram v1 32-bit format (>B?256sI?)
+        if len(raw) == 263:
+            dc_id, test_mode, auth_key, user_id, is_bot = struct.unpack(">B?256sI?", raw)
+            converted = struct.pack(">BI?256sQ?", dc_id, int(api_id), test_mode, auth_key, user_id, is_bot)
+            LOGGER.info("✅ Converted Pyrogram v1 32-bit session string (263B) to Kurigram format (271B)")
+            return base64.urlsafe_b64encode(converted).decode().rstrip("=")
+
+    except Exception as e:
+        LOGGER.warning(f"Session string converter notice: {e}")
+    return session_str
+
+
+# ---------------------------------------------------------------------------
+# Compatibility shim: PyTgCalls 0.9.7 Supergroup ID fix (-100...)
 # ---------------------------------------------------------------------------
 try:
     from pyrogram.raw.types import UpdateGroupCall, PeerChat, PeerChannel
@@ -30,15 +68,9 @@ try:
             return getattr(self, "_chat_id", None)
 
         UpdateGroupCall.chat_id = property(_shim_chat_id)
-        logging.getLogger("MusicBot").info(
-            "✅ UpdateGroupCall.chat_id compatibility shim applied (Supergroup fixed)"
-        )
+        LOGGER.info("✅ UpdateGroupCall.chat_id compatibility shim applied")
 except Exception as _shim_err:
-    logging.getLogger("MusicBot").warning(
-        f"⚠️ UpdateGroupCall compatibility shim skip: {_shim_err}"
-    )
-
-LOGGER = logging.getLogger("MusicBot")
+    LOGGER.warning(f"⚠️ UpdateGroupCall compatibility shim skip: {_shim_err}")
 
 START_TIME = time.monotonic()
 
@@ -50,11 +82,14 @@ bot = Client(
     in_memory=True,
 )
 
+# Convert session string automatically to 271 bytes
+CLEAN_SESSION = _fix_session_string(config.STRING_SESSION, config.API_ID)
+
 assistant = Client(
     name="Assistant",
     api_id=config.API_ID,
     api_hash=config.API_HASH,
-    session_string=config.STRING_SESSION,
+    session_string=CLEAN_SESSION,
     in_memory=True,
 )
 

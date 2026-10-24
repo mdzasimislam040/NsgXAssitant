@@ -1,4 +1,5 @@
 import os
+import glob
 import asyncio
 import aiohttp
 from youtube_search import YoutubeSearch
@@ -24,6 +25,21 @@ YTDL_OPTS = {
 
 class DownloadError(Exception):
     """API se gaana ready nahi ho paya."""
+
+
+def _cleanup_old_downloads(max_files: int = 5):
+    """Render-er disk full howa theke bachate purono gaan auto-delete kore."""
+    try:
+        files = glob.glob(os.path.join(DOWNLOADS_DIR, "*.mp3"))
+        if len(files) > max_files:
+            files.sort(key=os.path.getmtime)
+            for f in files[:-max_files]:
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
+    except Exception as e:
+        LOGGER.warning(f"Download cleanup error: {e}")
 
 
 def _video_id(video: str) -> str:
@@ -76,6 +92,7 @@ async def search_track(query: str):
 
 
 def _download_song_local(video_id: str) -> str:
+    _cleanup_old_downloads(max_files=5)
     target_file = os.path.join(DOWNLOADS_DIR, f"{video_id}.mp3")
     if os.path.exists(target_file) and os.path.getsize(target_file) > 1024:
         return target_file
@@ -101,7 +118,6 @@ def _download_song_local(video_id: str) -> str:
     if os.path.exists(target_file):
         return target_file
 
-    # Fallback to direct url extraction
     with yt_dlp.YoutubeDL(YTDL_OPTS) as ytdl:
         info = ytdl.extract_info(url, download=False)
         return info.get("url")
@@ -122,7 +138,7 @@ async def get_stream_url(video: str) -> str:
                     if resp.status == 200:
                         return stream_url
         except Exception:
-            LOGGER.info("Nexor API unavailable, switching to local audio engine.")
+            LOGGER.info("Nexor API unavailable, switching to local fast engine.")
 
     # 2. Local Fast Extraction via yt-dlp
     loop = asyncio.get_event_loop()
