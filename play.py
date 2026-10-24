@@ -295,7 +295,7 @@ def _welcome_text(user_name: str, user_id: int, bot_name: str, bot_username: str
         f"🦋✦ ᴜʟᴛʀᴀ sᴍᴏᴏᴛʜ ᴘʟᴀʏʙᴀᴄᴋ\n"
         f"🦋✦ ᴄʀʏsᴛᴀʟ ᴄʟᴇᴀʀ sᴏᴜɴᴅ • ɴᴏ ʟᴀɢ\n\n"
         f"🦋✦ ᴛᴀᴘ ʜᴇʟᴘ ᴛᴏ ᴠɪᴇᴡ ᴀʟʟ ᴄᴏᴍᴍᴀɴᴅs\n\n"
-        f"🦋ᴘᴏᴡᴇʀᴇᴅ ʙʏ : [Aᴅɪᴛʏᴀ × Aᴘɪꜱ](https://t.me/AdityaXzexxyAPI)\n\n"
+        f"🦋ᴘᴏᴡᴇʀᴇᴅ ʙʏ : [Aᴅɪᴛʏᴀ × Aᴘɪꜱ](https://t.me/NSG_CHEATS)\n\n"
         f"╭───────────── ✦ ─────────────╮\n"
         f"❖ ᴇɴᴊᴏʏ ᴛʜᴇ ᴍᴜsɪᴄ ❖\n"
         f"╰───────────── ✦ ─────────────╯"
