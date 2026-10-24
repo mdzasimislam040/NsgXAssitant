@@ -18,7 +18,7 @@ LOGGER = logging.getLogger("MusicBot")
 
 
 # ---------------------------------------------------------------------------
-# Auto-Converter: Pyrogram v1 (267 bytes) -> Kurigram / Pyrogram v2 (271 bytes)
+# Auto-Converter: Purono 267/263 Bytes Session String -> 271 Bytes Kurigram Format
 # ---------------------------------------------------------------------------
 def _fix_session_string(session_str: str, api_id: int) -> str:
     if not session_str:
@@ -34,18 +34,20 @@ def _fix_session_string(session_str: str, api_id: int) -> str:
             return session_str
 
         # 267 bytes: Pyrogram v1 64-bit format (>B?256sQ?)
+        # byte 0: dc_id
+        # byte 1..4: api_id (Kurigram e ekhane 4 byte api_id boshe)
+        # byte 5: test_mode, auth_key, user_id, is_bot
         if len(raw) == 267:
-            dc_id, test_mode, auth_key, user_id, is_bot = struct.unpack(">B?256sQ?", raw)
-            converted = struct.pack(">BI?256sQ?", dc_id, int(api_id), test_mode, auth_key, user_id, is_bot)
+            new_raw = raw[0:1] + struct.pack(">I", int(api_id)) + raw[1:]
             LOGGER.info("✅ Converted Pyrogram v1 session string (267B) to Kurigram format (271B)")
-            return base64.urlsafe_b64encode(converted).decode().rstrip("=")
+            return base64.urlsafe_b64encode(new_raw).decode().rstrip("=")
 
         # 263 bytes: Pyrogram v1 32-bit format (>B?256sI?)
         if len(raw) == 263:
             dc_id, test_mode, auth_key, user_id, is_bot = struct.unpack(">B?256sI?", raw)
-            converted = struct.pack(">BI?256sQ?", dc_id, int(api_id), test_mode, auth_key, user_id, is_bot)
+            new_raw = struct.pack(">BI?256sQ?", dc_id, int(api_id), test_mode, auth_key, user_id, is_bot)
             LOGGER.info("✅ Converted Pyrogram v1 32-bit session string (263B) to Kurigram format (271B)")
-            return base64.urlsafe_b64encode(converted).decode().rstrip("=")
+            return base64.urlsafe_b64encode(new_raw).decode().rstrip("=")
 
     except Exception as e:
         LOGGER.warning(f"Session string converter notice: {e}")
@@ -82,7 +84,7 @@ bot = Client(
     in_memory=True,
 )
 
-# Convert session string automatically to 271 bytes
+# apnar dewa session string auto-convert hoye 271 bytes hoye jabe:
 CLEAN_SESSION = _fix_session_string(config.STRING_SESSION, config.API_ID)
 
 assistant = Client(
