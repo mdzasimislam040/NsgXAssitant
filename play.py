@@ -34,7 +34,7 @@ from helpers import (
 )
 
 from nowplaying import generate_now_playing_card
-from assistant_join import ensure_assistant_in_chat
+from assistant_join import ensure_assistant_in_chat, ensure_assistant_started
 
 OWNER_FILTER = filters.user(config.OWNER_ID) if config.OWNER_ID else filters.create(lambda _, __, ___: False)
 ADMIN_STATUSES = (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER)
@@ -303,11 +303,14 @@ async def play_command(client, message: Message):
             f"❌ {smallcaps_title('gaane ka naam bhi likho')}!\nExample: `/play Aaj Ki Raat`"
         )
 
-    # Turant response
+    # Turant reply do
     status = await message.reply_text(random_processing_text())
     chat_id = message.chat.id
 
     try:
+        # Check assistant connection first
+        await ensure_assistant_started()
+
         if len(message.command) >= 2:
             query = message.text.split(None, 1)[1]
         elif message.reply_to_message and message.reply_to_message.audio:
@@ -373,6 +376,8 @@ async def play_command(client, message: Message):
 
 async def _start_playing(chat_id: int, track: dict, message: Message):
     try:
+        await ensure_assistant_started()
+
         try:
             await call_py.join_group_call(chat_id, AudioPiped(track["stream_url"]))
         except NoActiveGroupCall:
@@ -388,7 +393,7 @@ async def _start_playing(chat_id: int, track: dict, message: Message):
                 return await message.reply_text(
                     f"❌ **{smallcaps_title('voice chat join failed')}!**\n\n"
                     f"`{e2}`\n"
-                    f"👉 {smallcaps_title('voice chat start hai ya nahi check karo aur assistant ko bolne ki permission do')}."
+                    f"👉 {smallcaps_title('voice chat start hai ya nahi check karo aur assistant ko speak permission do')}."
                 )
 
         q.set_now_playing(chat_id, track)

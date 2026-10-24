@@ -59,13 +59,17 @@ async def register_bot_commands():
 
 
 async def _run_once():
-    await bot.start()
+    # 1. Start Main Bot
+    if not getattr(bot, "is_connected", False):
+        await bot.start()
     LOGGER.info("✅ Bot client started")
 
-    await assistant.start()
+    # 2. Start Assistant (Userbot)
+    if not getattr(assistant, "is_connected", False):
+        await assistant.start()
     LOGGER.info("✅ Assistant client started")
 
-    # Fast caching of recent dialogs (no full loop hang)
+    # Fast caching of recent dialogs
     try:
         async for dialog in assistant.get_dialogs(limit=25):
             pass
@@ -73,6 +77,7 @@ async def _run_once():
     except Exception as e:
         LOGGER.warning(f"Assistant dialog cache error: {e}")
 
+    # 3. Start PyTgCalls Engine
     await call_py.start()
     LOGGER.info("✅ PyTgCalls engine started")
 

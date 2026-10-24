@@ -11,6 +11,21 @@ import config
 from clients import bot, assistant, LOGGER
 
 
+async def ensure_assistant_started():
+    """
+    Assistant jodi kono karone disconnected ba not started thake,
+    tobe eta nijer theke auto-connect/start kore nebe.
+    """
+    if not getattr(assistant, "is_connected", False):
+        try:
+            LOGGER.info("Assistant disconnected chilo — auto-starting...")
+            await assistant.start()
+            LOGGER.info("✅ Assistant auto-started successfully!")
+        except Exception as e:
+            LOGGER.error(f"Failed to auto-start assistant: {e}")
+            raise RuntimeError(f"Assistant account login error: {e}")
+
+
 async def _resolve_assistant_peer(chat_id: int):
     try:
         await assistant.get_chat(chat_id)
@@ -19,6 +34,7 @@ async def _resolve_assistant_peer(chat_id: int):
 
 
 async def is_assistant_in_chat(chat_id: int) -> bool:
+    await ensure_assistant_started()
     try:
         await assistant.get_chat_member(chat_id, "me")
         return True
@@ -35,9 +51,11 @@ async def is_assistant_in_chat(chat_id: int) -> bool:
 
 async def ensure_assistant_in_chat(chat_id: int):
     """
-    Assistant chat mein hai ya nahi verify karta hai,
+    Assistant chat mein hai ya nahi confirm karta hai,
     aur agar nahi hai to auto-join ya link ke through enter karwata hai.
     """
+    await ensure_assistant_started()
+
     if await is_assistant_in_chat(chat_id):
         return True, ""
 
