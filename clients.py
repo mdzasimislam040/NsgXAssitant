@@ -14,15 +14,8 @@ logging.getLogger("pyrogram").setLevel(logging.WARNING)
 logging.getLogger("pytgcalls").setLevel(logging.WARNING)
 
 # ---------------------------------------------------------------------------
-# Compatibility shim: py-tgcalls==0.9.7 (bahut purana) ka raw-update handler
-# yeh assume karta hai ki UpdateGroupCall object ke paas seedha `.chat_id`
-# attribute hota hai (data2[update.chat_id]). Naye kurigram/pyrogram schema
-# mein yeh field hata diya gaya — ab sirf `.peer` (PeerChat/PeerChannel)
-# milta hai. Isi wajah se ye error aata tha:
-#   AttributeError: 'UpdateGroupCall' object has no attribute 'chat_id'
-# Yeh patch `.chat_id` ko ek computed property bana deta hai jo `.peer` se
-# nikal ke wahi purana behaviour de deta hai — bina py-tgcalls ya kurigram
-# ka version chede.
+# Compatibility shim: PyTgCalls 0.9.7 + Kurigram / Pyrogram
+# Supergroup ID (-100...) thikvabe resolve korar jonno shim.
 # ---------------------------------------------------------------------------
 try:
     from pyrogram.raw.types import UpdateGroupCall, PeerChat, PeerChannel
@@ -31,23 +24,22 @@ try:
         def _shim_chat_id(self):
             peer = getattr(self, "peer", None)
             if isinstance(peer, PeerChat):
-                return peer.chat_id
+                return -peer.chat_id
             if isinstance(peer, PeerChannel):
-                return peer.channel_id
-            raise AttributeError("chat_id")
+                return -int(f"100{peer.channel_id}")
+            return getattr(self, "_chat_id", None)
 
         UpdateGroupCall.chat_id = property(_shim_chat_id)
         logging.getLogger("MusicBot").info(
-            "✅ UpdateGroupCall.chat_id compatibility shim applied"
+            "✅ UpdateGroupCall.chat_id compatibility shim applied (Supergroup fixed)"
         )
-except Exception as _shim_err:  # kabhi bhi patch fail ho to bot crash na ho
+except Exception as _shim_err:
     logging.getLogger("MusicBot").warning(
-        f"⚠️ UpdateGroupCall compatibility shim skip ho gaya: {_shim_err}"
+        f"⚠️ UpdateGroupCall compatibility shim skip: {_shim_err}"
     )
 
 LOGGER = logging.getLogger("MusicBot")
 
-# Process shuru hone ka time — group start message mein uptime dikhane ke liye
 START_TIME = time.monotonic()
 
 bot = Client(

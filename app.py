@@ -11,8 +11,8 @@ import config
 import db
 import botstate
 from clients import bot, assistant, call_py, LOGGER
+from helpers import CREDIT_LINE
 
-# Handlers register karne ke liye import karna zaroori hai
 import play  # noqa: F401
 
 web = FastAPI()
@@ -20,7 +20,7 @@ web = FastAPI()
 
 @web.get("/")
 async def root():
-    return {"status": "running"}
+    return {"status": "running", "credit": "Power by Zasim Credit NSG CHEATS"}
 
 
 def run_web():
@@ -28,84 +28,70 @@ def run_web():
 
 
 async def keep_alive():
-    """
-    Render free web services 15 min inactivity ke baad sula deta hai.
-    Isliye bot khud apne hi URL ko periodically ping karta rehta hai taaki
-    process kabhi offline na ho. RENDER_EXTERNAL_URL Render khud provide
-    karta hai deploy ke time, isko manually set karne ki zaroorat nahi.
-    """
     if not config.RENDER_EXTERNAL_URL:
-        LOGGER.info("RENDER_EXTERNAL_URL set nahi hai — keep-alive ping skip ho raha hai.")
         return
-
     async with aiohttp.ClientSession() as session:
         while True:
             try:
                 async with session.get(config.RENDER_EXTERNAL_URL, timeout=aiohttp.ClientTimeout(total=20)) as resp:
-                    LOGGER.info(f"Keep-alive ping: {resp.status}")
+                    LOGGER.info(f"Keep-alive status: {resp.status}")
             except Exception as e:
-                LOGGER.warning(f"Keep-alive ping fail: {e}")
-            # Pehle ping turant, uske baad har PING_INTERVAL seconds par —
-            # Render free tier ~15 min inactivity ke baad sula deta hai, isliye
-            # start hote hi ping zaroori hai, sirf sleep ke baad nahi.
+                LOGGER.warning(f"Keep-alive ping failed: {e}")
             await asyncio.sleep(config.PING_INTERVAL)
 
 
 async def register_bot_commands():
-    """Bot commands set karta hai taaki group mein '/' likhne par menu dikhe."""
     try:
         await bot.set_bot_commands(
             [
-                BotCommand("start", "Bot ko start karo"),
                 BotCommand("play", "Gaana bajao"),
                 BotCommand("skip", "Agla gaana"),
                 BotCommand("pause", "Pause karo"),
                 BotCommand("resume", "Resume karo"),
                 BotCommand("stop", "Band karo"),
-                BotCommand("reload", "Bot ko refresh karo (admin only)"),
-                BotCommand("id", "Apni/group ki ID dekho"),
+                BotCommand("userbotjoin", "Assistant ko add karo"),
+                BotCommand("reload", "Bot refresh karo"),
+                BotCommand("id", "Chat & User ID dekho"),
             ]
         )
     except Exception as e:
-        LOGGER.warning(f"Bot commands set nahi ho paye: {e}")
+        LOGGER.warning(f"Set bot commands error: {e}")
 
 
 async def _run_once():
     await bot.start()
-    LOGGER.info("✅ Bot started")
+    LOGGER.info("✅ Bot client started")
 
     await assistant.start()
-    LOGGER.info("✅ Assistant started")
+    LOGGER.info("✅ Assistant client started")
 
-    # IMPORTANT: assistant ke dialogs ek baar fetch kar lo taaki pyrogram
-    # har group/channel ka peer + access_hash cache kar le. Isके bina
-    # thodi der baad "ValueError: Peer id invalid: ..." aata hai jab
-    # bot change_stream/leave_group_call try karta hai kisi aise chat par
-    # jiska peer assistant ke local cache mein nahi hai.
+    # Fast caching of recent dialogs (no full loop hang)
     try:
-        async for _ in assistant.get_dialogs():
+        async for dialog in assistant.get_dialogs(limit=25):
             pass
-        LOGGER.info("✅ Assistant peers cached")
+        LOGGER.info("✅ Assistant dialogs cached")
     except Exception as e:
-        LOGGER.warning(f"Dialogs cache karne mein error: {e}")
+        LOGGER.warning(f"Assistant dialog cache error: {e}")
 
     await call_py.start()
-    LOGGER.info("✅ PyTgCalls started — ab bot music bajane ke liye taiyar hai")
+    LOGGER.info("✅ PyTgCalls engine started")
 
-    # Owner ke /on /off se pichhli baar jo status set kiya tha, wahi load karo
     try:
         botstate.set_enabled(await db.get_bot_status())
-        LOGGER.info(f"✅ Bot status loaded: {'ON' if botstate.is_enabled() else 'OFF'}")
-    except Exception as e:
-        LOGGER.warning(f"Bot status load nahi ho paya, default ON rakh rahe hain: {e}")
+    except Exception:
+        botstate.set_enabled(True)
 
     await register_bot_commands()
 
     if config.LOG_GROUP_ID:
         try:
-            await bot.send_message(config.LOG_GROUP_ID, "✅ Bot restart ho gaya hai aur ab online hai.")
+            await bot.send_message(
+                config.LOG_GROUP_ID,
+                f"✅ **Music Bot Started Successfully**\n\n{CREDIT_LINE}",
+                disable_web_page_preview=True,
+            )
         except Exception as e:
-            LOGGER.warning(f"Log group mein message nahi bhej paya: {e}")
+            LOGGER.warning(f"Log group notification error: {e}")
 
     keep_alive_task = asyncio.create_task(keep_alive())
 
@@ -125,18 +111,12 @@ async def _run_once():
 
 
 async def main():
-    """
-    _run_once() ko wrap karta hai taaki koi bhi unexpected crash (network
-    drop, connection reset, etc.) permanently bot ko offline na kar de —
-    thodi der baad process khud ko restart kar leta hai, jab tak Render
-    khud process kill na kare.
-    """
     while True:
         try:
             await _run_once()
-            break  # idle() sirf tabhi return karta hai jab process ko normally stop kiya jaaye
+            break
         except Exception as e:
-            LOGGER.error(f"Bot crash ho gaya, 10 second mein restart kar raha hoon: {e}")
+            LOGGER.error(f"Process crashed, restarting in 10s: {e}")
             await asyncio.sleep(10)
 
 
